@@ -10,7 +10,6 @@
 
 import { useEffect } from "react"
 import { useAuthStore } from "../store/authStore"
-import { authService } from "../api/services"
 import type { User } from "../types/user"
 
 interface UseAuthReturn {
@@ -18,7 +17,7 @@ interface UseAuthReturn {
   token: string | null
   isLoading: boolean
   error: string | null
-  login: (email: string, password: string) => Promise<void>
+  login: (userData: User, token: string) => Promise<void>
   logout: () => Promise<void>
   getUser: () => User | null
 }
@@ -42,18 +41,23 @@ export const useAuth = (): UseAuthReturn => {
     hydrate()
   }, [hydrate])
 
-  // Login con email y password
-  const login = async (email: string, password: string): Promise<void> => {
+  // Login con usuario y token
+  const login = async (userData: User, token: string): Promise<void> => {
     try {
       setLoading(true)
       setError(null)
 
-      // Llamar servicio de autenticación
-      const response = await authService.login(email, password)
-
-      // Guardar usuario y token
-      setUser(response.user)
-      setToken(response.token)
+      // Guardar en el store
+      setUser(userData)
+      setToken(token)
+      // Guardar usuario en cookie como respaldo para el middleware/hidratación
+      try {
+        const cookieVal = encodeURIComponent(JSON.stringify(userData))
+        document.cookie = `ec_user=${cookieVal}; path=/; max-age=${7 * 24 * 60 * 60}`
+      } catch (e) {
+        // ignore
+      }
+    
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Error al iniciar sesión"
       setError(errorMessage)
@@ -67,11 +71,24 @@ export const useAuth = (): UseAuthReturn => {
   const logout = async (): Promise<void> => {
     try {
       setLoading(true)
-      await authService.logout()
+      
+      // Limpiar estado
+      storeLogout()
+      
+      // Eliminar cookies relacionadas con la sesión (síncrono)
+      try {
+        document.cookie = `ec_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+        document.cookie = `ec_user=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+        document.cookie = `user_role=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+      } catch (e) {
+        // ignore
+      }
+
+      // Redirigir a landing usando replace para evitar historial innecesario
+      window.location.replace("/")
     } catch (err) {
       console.warn("Error al hacer logout:", err)
     } finally {
-      storeLogout()
       setLoading(false)
     }
   }

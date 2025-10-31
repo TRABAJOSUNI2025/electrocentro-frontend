@@ -1,25 +1,57 @@
 "use client"
 
 import type React from "react"
-
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
 import Link from "next/link"
-import { useAuthStore } from "@/src/store/authStore"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { useAuth } from "@/src/hooks/useAuth"
+import { setCookie } from "@/src/utils/cookies"
+import type { User, UserRole } from "@/src/types/user"
 
 // Datos de prueba simulados
 const MOCK_USERS = [
-  { email: "cliente@correo.com", password: "1234", role: "cliente", name: "Juan Pérez" },
-  { email: "admin@correo.com", password: "1234", role: "admin", name: "Carla Supervisor" },
+  { email: "cliente@correo.com", password: "1234", role: "cliente" as UserRole, name: "Juan Pérez" },
+  { email: "admin@correo.com", password: "1234", role: "admin" as UserRole, name: "Carla Supervisor" },
 ]
 
 export default function LoginPage() {
   const router = useRouter()
-  const { setUser, setToken } = useAuthStore()
+  const { login } = useAuth()
+  // Al montar, comprobar cookies para decidir redirección automática
+  useEffect(() => {
+    try {
+      const cookies = document.cookie.split('; ').reduce((acc: any, cur) => {
+        const [k, v] = cur.split('=')
+        acc[k] = decodeURIComponent(v || '')
+        return acc
+      }, {})
+
+      const token = cookies['ec_token']
+      const userStr = cookies['ec_user']
+
+      if (token && userStr) {
+        try {
+          const parsed = JSON.parse(userStr)
+          // Sólo redirigir si parsed.role existe
+          if (parsed && parsed.role) {
+            router.replace(parsed.role === 'admin' ? '/admin/bienvenida' : '/cliente/bienvenida')
+            return
+          }
+        } catch (e) {
+          // Si la cookie ec_user está corrupta, eliminar cookies y mostrar login
+          document.cookie = `ec_user=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+          document.cookie = `ec_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+          document.cookie = `user_role=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, [router])
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
@@ -46,36 +78,41 @@ export default function LoginPage() {
 
     setLoading(true)
 
-    // Simular petición a API
-    setTimeout(() => {
-      // Buscar usuario en datos de prueba
+    try {
+      // Simular petición a API
       const user = MOCK_USERS.find((u) => u.email === email && u.password === password)
 
-      if (user) {
-        // Determinar rol basado en el email
-        const role = email.includes("admin") ? "admin" : "cliente"
-
-        // Guardar en store
-        setUser({
-          id: "1",
-          name: user.name,
-          email: user.email,
-          role: role as "cliente" | "admin",
-        })
-        setToken("mock-token-" + Date.now())
-
-        setSuccess(true)
-
-        // Redirigir después de 1.5 segundos
-        setTimeout(() => {
-          router.push(role === "admin" ? "/admin/bienvenida" : "/cliente/bienvenida")
-        }, 1500)
-      } else {
-        setError("Correo o contraseña incorrectos")
+      if (!user) {
+        throw new Error("Correo o contraseña incorrectos")
       }
 
+      // Generar token de prueba
+      const token = "mock-token-" + Date.now()
+
+      // Crear objeto de usuario con el formato esperado
+      const userData: User = {
+        id: "1",
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      }
+
+        // Guardar token y rol en cookies para el middleware
+        setCookie("ec_token", token)
+        setCookie("user_role", userData.role)
+
+      // Llamar a login del hook useAuth que ahora maneja el estado
+      await login(userData, token)
+
+      setSuccess(true)
+
+      // Redirigir según el rol
+      router.replace(user.role === "admin" ? "/admin/bienvenida" : "/cliente/bienvenida")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al iniciar sesión")
+    } finally {
       setLoading(false)
-    }, 1000)
+    }
   }
 
   return (

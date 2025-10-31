@@ -47,4 +47,25 @@ apiClient.interceptors.response.use(
   },
 )
 
+// Servicio de autenticación
+export const authService = {
+  // Login
+  login: async (email: string, password: string) => {
+    const response = await apiClient.post("/auth/login", { email, password })
+    return response.data
+  },
+
+  // Logout
+  logout: async () => {
+    const response = await apiClient.post("/auth/logout")
+    return response.data
+  },
+
+  // Verificar token
+  verifyToken: async () => {
+    const response = await apiClient.get("/auth/verify")
+    return response.data
+  }
+}
+
 export default apiClient

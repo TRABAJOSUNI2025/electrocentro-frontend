@@ -3,18 +3,41 @@
 import { motion } from "framer-motion"
 import Link from "next/link"
 import { useAuthStore } from "@/src/store/authStore"
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 
 export default function BienvenidaAdminPage() {
   const { user } = useAuthStore()
   const router = useRouter()
 
+  const [hydrated, setHydrated] = useState(false)
+
   useEffect(() => {
-    if (!user || user.role !== "admin") {
-      router.push("/login")
+    // Esperar un breve tick para permitir la hidratación del store
+    const t = setTimeout(() => setHydrated(true), 50)
+    return () => clearTimeout(t)
+  }, [])
+
+  useEffect(() => {
+    // Si ya pasó la hidratación y no hay usuario válido, redirigir a login
+    if (hydrated) {
+      const tokenCookie = document.cookie.split('; ').find((c) => c.startsWith('ec_token='))
+      if (!user || user.role !== "admin") {
+        // Si no hay token en cookies, redirigir; si hay token pero store vacío, esperar
+        if (!tokenCookie) {
+          router.push("/login")
+        }
+      }
     }
-  }, [user, router])
+  }, [hydrated, user, router])
+
+  if (!hydrated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div>Cargando...</div>
+      </div>
+    )
+  }
 
   if (!user || user.role !== "admin") return null
 

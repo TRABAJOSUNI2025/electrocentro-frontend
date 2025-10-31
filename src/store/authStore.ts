@@ -58,13 +58,49 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ user: null, token: null, error: null })
     localStorage.removeItem("ec_token")
     localStorage.removeItem("ec_user")
+    // Eliminar cookies relacionadas con la sesión si estamos en cliente
+    try {
+      if (typeof document !== "undefined") {
+        document.cookie = `ec_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+        document.cookie = `ec_user=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+        document.cookie = `user_role=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+      }
+    } catch (e) {
+      // ignore
+    }
   },
 
   // Restaurar estado desde localStorage (hidratación)
   hydrate: () => {
     const token = localStorage.getItem("ec_token")
     const userStr = localStorage.getItem("ec_user")
-    const user = userStr ? JSON.parse(userStr) : null
+    // Fallback a cookie si no está en localStorage
+    let user = userStr ? JSON.parse(userStr) : null
+    try {
+      if (!user) {
+        const cookieMatch = document.cookie.split('; ').find((c) => c.startsWith('ec_user='))
+        if (cookieMatch) {
+          const cookieVal = decodeURIComponent(cookieMatch.split('=')[1])
+          user = JSON.parse(cookieVal)
+        }
+      }
+    } catch (e) {
+      // ignore parse errors
+    }
+
     set({ token, user })
   },
 }))
+
+// Auto-hidratación en cliente: intenta restaurar estado inmediatamente para evitar
+// que componentes que leen el store vean `user` como null durante la hidratación.
+if (typeof window !== "undefined") {
+  // Llamar a hydrate en el siguiente tick para asegurarnos que la store esté definida
+  setTimeout(() => {
+    try {
+      useAuthStore.getState().hydrate()
+    } catch (e) {
+      // ignore
+    }
+  }, 0)
+}
